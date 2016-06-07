@@ -4,6 +4,7 @@ from b3j0f.conf import Configurable, category, Parameter
 from link.dbrequest.driver import Driver
 
 from link.mongo.ast.insert import ASTInsertTransform
+from link.mongo.ast.filter import ASTFilterTransform
 from link.mongo import CONF_BASE_PATH
 
 from pymongo import MongoClient
@@ -89,12 +90,20 @@ class MongoDriver(Driver):
 
         elif query['type'] == Driver.QUERY_READ:
             ast = query['filter']
-            mfilter = self.ast_to_filter(ast)
+            mfilter, s = self.ast_to_filter(ast)
 
-            return self.collection.find_many(mfilter)
+            cursor = self.collection.find_many(mfilter)
+
+            if s.start:
+                cursor = cursor.skip(s.start)
+
+            if s.stop:
+                cursor = cursor.limit(s.stop)
+
+            return cursor
 
         elif query['type'] == Driver.QUERY_UPDATE:
-            filter_ast = query['filter']
+            filter_ast, _ = query['filter']
             update_ast = query['update']
 
             mfilter = self.ast_to_filter(filter_ast)
@@ -104,7 +113,7 @@ class MongoDriver(Driver):
 
         elif query['type'] == Driver.QUERY_DELETE:
             ast = query['filter']
-            mfilter = self.ast_to_filter(ast)
+            mfilter, _ = self.ast_to_filter(ast)
 
             return self.collection.delete_many(mfilter)
 
@@ -113,7 +122,8 @@ class MongoDriver(Driver):
         return transform()
 
     def ast_to_filter(self, ast):
-        raise NotImplementedError('TODO')
+        transform = ASTFilterTransform(ast)
+        return transform()
 
     def ast_to_update(self, ast):
         raise NotImplementedError('TODO')
