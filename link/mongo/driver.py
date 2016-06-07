@@ -2,6 +2,8 @@
 
 from b3j0f.conf import Configurable, category, Parameter
 from link.dbrequest.driver import Driver
+
+from link.mongo.ast.insert import ASTInsertTransform
 from link.mongo import CONF_BASE_PATH
 
 from pymongo import MongoClient
@@ -23,7 +25,7 @@ class MongoDriver(Driver):
     @property
     def database(self):
         if not hasattr(self, '_database'):
-            database = self.path[1:].split('/', 1)[0]
+            database = self.path[0]
 
             db = self.conn[database]
 
@@ -52,8 +54,7 @@ class MongoDriver(Driver):
     @property
     def collection(self):
         if not hasattr(self, '_collection'):
-            collection = self.path[1:].split('/', 1)[1]
-            collection = collection.replace('/', '_')
+            collection = '_'.join(self.path[1:])
 
             self._collection = self.database[collection]
 
@@ -108,7 +109,8 @@ class MongoDriver(Driver):
             return self.collection.delete_many(mfilter)
 
     def ast_to_insert(self, ast):
-        raise NotImplementedError('TODO')
+        transform = ASTInsertTransform(ast)
+        return transform()
 
     def ast_to_filter(self, ast):
         raise NotImplementedError('TODO')
