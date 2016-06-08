@@ -126,4 +126,21 @@ class MongoDriver(Driver):
         return transform()
 
     def ast_to_update(self, ast):
-        raise NotImplementedError('TODO')
+        doc = self.ast_to_insert(ast)
+
+        update_set = {
+            key: value
+            for key, value in doc.items()
+            if value is not None
+        }
+
+        update_unset = {
+            key: value
+            for key, value in doc.items()
+            if value is None
+        }
+
+        return {
+            '$set': update_set,
+            '$unset': update_unset
+        }
