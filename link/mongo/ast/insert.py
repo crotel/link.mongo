@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from link.dbrequest.expression import E
-from b3j0f.task import get_task
+from b3j0f.task import gettask
 
 from six import string_types
 
@@ -72,7 +72,7 @@ class ASTInsertTransform(object):
             return None
 
     def resolve_function(self, func):
-        f = get_task('link.dbrequest.functions.{0}'.format(func['func']))
+        f = gettask('link.dbrequest.functions.{0}'.format(func['func']))
         args = [
             self.resolve_expression(argument)
             for argument in func['args']
