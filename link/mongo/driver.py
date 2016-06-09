@@ -93,7 +93,10 @@ class MongoDriver(Driver):
 
         elif query['type'] == Driver.QUERY_READ:
             ast = query['filter']
-            mfilter, s = self.ast_to_filter(ast)
+            mfilter, s = {}, slice(None)
+
+            if ast:
+                mfilter, s = self.ast_to_filter(ast)
 
             cursor = self.collection.find(mfilter)
 
