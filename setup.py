@@ -15,7 +15,7 @@ LICENSE = 'MIT'
 REQUIREMENTS = [
     'b3j0f.conf>=0.3.18',
     'b3j0f.task>=0.0.4',
-    'link.dbrequest>=0.1',
+    'link.dbrequest>=0.2',
     'pymongo>=3.2.2',
     'six>=1.10.0'
 ]

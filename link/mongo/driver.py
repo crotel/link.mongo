@@ -62,7 +62,7 @@ class MongoDriver(Driver):
         return self._collection
 
     def _connect(self):
-        return MongoClient(self.hosts)
+        return MongoClient(['{0}:{1}'.format(*host) for host in self.hosts])
 
     def _disconnect(self, conn):
         del self._database
