@@ -5,6 +5,7 @@ from link.dbrequest.driver import Driver
 
 from link.mongo.ast.insert import ASTInsertTransform
 from link.mongo.ast.filter import ASTFilterTransform
+from link.mongo.model import MongoCursor
 from link.mongo import CONF_BASE_PATH
 
 from pymongo import MongoClient
@@ -22,6 +23,8 @@ from pymongo import MongoClient
 class MongoDriver(Driver):
 
     __protocols__ = ['mongo']
+
+    cursor_class = MongoCursor
 
     @property
     def database(self):
@@ -92,7 +95,7 @@ class MongoDriver(Driver):
             ast = query['filter']
             mfilter, s = self.ast_to_filter(ast)
 
-            cursor = self.collection.find_many(mfilter)
+            cursor = self.collection.find(mfilter)
 
             if s.start:
                 cursor = cursor.skip(s.start)
@@ -103,19 +106,23 @@ class MongoDriver(Driver):
             return cursor
 
         elif query['type'] == Driver.QUERY_UPDATE:
-            filter_ast, _ = query['filter']
+            filter_ast = query['filter']
             update_ast = query['update']
 
-            mfilter = self.ast_to_filter(filter_ast)
+            mfilter, _ = self.ast_to_filter(filter_ast)
             uspec = self.ast_to_update(update_ast)
 
-            return self.collection.update_many(mfilter, uspec)
+            result = self.collection.update_many(mfilter, uspec)
+
+            return result.modified_count
 
         elif query['type'] == Driver.QUERY_DELETE:
             ast = query['filter']
             mfilter, _ = self.ast_to_filter(ast)
 
-            return self.collection.delete_many(mfilter)
+            result = self.collection.delete_many(mfilter)
+
+            return result.deleted_count
 
     def ast_to_insert(self, ast):
         transform = ASTInsertTransform(ast)
@@ -140,7 +147,12 @@ class MongoDriver(Driver):
             if value is None
         }
 
-        return {
-            '$set': update_set,
-            '$unset': update_unset
-        }
+        update = {}
+
+        if update_set:
+            update['$set'] = update_set
+
+        if update_unset:
+            update['$unset'] = update_unset
+
+        return update

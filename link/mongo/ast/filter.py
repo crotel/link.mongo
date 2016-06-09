@@ -25,18 +25,22 @@ class ASTFilterTransform(object):
         self.filters = [
             clause
             for clause in ast
-            if clause['name'] == 'filter'
+            if clause['name'] in ['filter', 'exclude']
         ]
 
         self.slices = [
-            clause
+            clause['val']
             for clause in ast
             if clause['name'] == 'slice'
         ]
 
     def resolve_filter(self, clause, inverted=False):
-        if isinstance(clause, dict) and clause['name'] == 'not':
-            return self.resolve_filter(clause['val'], inverted=True)
+        if isinstance(clause, dict):
+            if clause['name'] == 'filter':
+                return self.resolve_filter(clause['val'], inverted=inverted)
+
+            elif clause['name'] in ['exclude', 'not']:
+                return self.resolve_filter(clause['val'], inverted=True)
 
         else:
             left, op, right = clause
