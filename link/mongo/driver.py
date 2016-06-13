@@ -88,13 +88,18 @@ class MongoDriver(Driver):
         elif query['type'] in [Driver.QUERY_READ, Driver.QUERY_COUNT]:
             ast = query['filter']
             mfilter, s = {}, slice(None)
+            aggregation = False
 
             if ast:
                 result = self.ast_to_filter(ast)
 
-            if isinstance(result, tuple):
-                mfilter, s = result
+                if isinstance(result, tuple):
+                    mfilter, s = result
 
+                else:
+                    aggregation = True
+
+            if not aggregation:
                 result = self.collection.find(mfilter)
 
                 if s.start:
@@ -104,6 +109,7 @@ class MongoDriver(Driver):
                     result = result.limit(s.stop)
 
             else:
+                print(result)
                 result = self.collection.aggregate(result)
 
             if query['type'] == Driver.QUERY_COUNT:

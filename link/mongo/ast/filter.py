@@ -221,12 +221,19 @@ class ASTFilterTransform(object):
         return [match_stage, group_stage]
 
     def __call__(self):
-        mfilter = {
-            '$and': [
-                self.resolve_filter(clause)
-                for clause in self.filters
-            ]
-        }
+        mfilter = {}
+
+        if self.filters:
+            if len(self.filters) == 1:
+                mfilter = self.resolve_filter(self.filters[0])
+
+            else:
+                mfilter = {
+                    '$and': [
+                        self.resolve_filter(clause)
+                        for clause in self.filters
+                    ]
+                }
 
         start = 0
         stop = 0
@@ -237,6 +244,12 @@ class ASTFilterTransform(object):
 
             start = max(sstart, start)
             stop = min(sstop, stop)
+
+        if start == 0:
+            start = None
+
+        if stop == 0:
+            stop = None
 
         if self.grouping is not None:
             return self.resolve_aggregation(mfilter, start, stop)
