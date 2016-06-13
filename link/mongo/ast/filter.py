@@ -34,13 +34,21 @@ class ASTFilterTransform(object):
             if clause['name'] == 'slice'
         ]
 
+        self.grouping = None
+
+        if ast[-1]['name'] == 'group':
+            self.grouping = ast[-1]['val']
+
     def resolve_filter(self, clause, inverted=False):
         if isinstance(clause, dict):
             if clause['name'] == 'filter':
                 return self.resolve_filter(clause['val'], inverted=inverted)
 
             elif clause['name'] in ['exclude', 'not']:
-                return self.resolve_filter(clause['val'], inverted=True)
+                return self.resolve_filter(
+                    clause['val'],
+                    inverted=not inverted
+                )
 
         else:
             left, op, right = clause
@@ -63,6 +71,44 @@ class ASTFilterTransform(object):
 
                         else:
                             return {'$or': [left, right]}
+
+                    elif op['val'] == '^':
+                        if inverted:
+                            return {
+                                '$or': [
+                                    {'$and': [left, right]},
+                                    {'$and': [
+                                        self.resolve_filter(
+                                            left,
+                                            inverted=not inverted
+                                        ),
+                                        self.resolve_filter(
+                                            right,
+                                            inverted=not inverted
+                                        )
+                                    ]}
+                                ]
+                            }
+
+                        else:
+                            return {
+                                '$or': [
+                                    {'$and': [
+                                        self.resolve_filter(
+                                            left,
+                                            inverted=not inverted
+                                        ),
+                                        right
+                                    ]},
+                                    {'$and': [
+                                        left,
+                                        self.resolve_filter(
+                                            right,
+                                            inverted=not inverted
+                                        )
+                                    ]}
+                                ]
+                            }
 
                 elif left and not right:
                     return left
@@ -144,6 +190,36 @@ class ASTFilterTransform(object):
             else:
                 return '{0} {1} {2}'.format(left, op['val'], right)
 
+    def resolve_aggregation(self, match, start, stop):
+        match_stage = {
+            '$match': match
+        }
+
+        if start is not None:
+            match_stage['$skip'] = start
+
+        if stop is not None:
+            match_stage['$limit'] = stop
+
+        group_stage = {
+            '$group': {
+                '_id': '${0}'.format(self.grouping['key'])
+            }
+        }
+
+        for expression in self.grouping['expressions']:
+            if expression['name'] == 'func':
+                key = '{0}_{1}'.format(
+                    expression['val']['func'],
+                    expression['val']['args'][0]['val'].replace('.', '_')
+                )
+                op = '${0}'.format(expression['val']['func'])
+                prop = '${0}'.format(expression['val']['args'][0]['val'])
+
+                group_stage['$group'][key] = {op: prop}
+
+        return [match_stage, group_stage]
+
     def __call__(self):
         mfilter = {
             '$and': [
@@ -162,4 +238,8 @@ class ASTFilterTransform(object):
             start = max(sstart, start)
             stop = min(sstop, stop)
 
-        return mfilter, slice(start, stop)
+        if self.grouping is not None:
+            return self.resolve_aggregation(mfilter, start, stop)
+
+        else:
+            return mfilter, slice(start, stop)

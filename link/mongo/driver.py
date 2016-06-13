@@ -76,12 +76,6 @@ class MongoDriver(Driver):
         return conn is not None
 
     def _process_query(self, conn, query):
-        if query['type'] == Driver.QUERY_COUNT:
-            ast = query['filter']
-            mfilter = self.ast_to_filter(ast)
-
-            return self.collection.count(mfilter)
-
         if query['type'] == Driver.QUERY_CREATE:
             ast = query['update']
             doc = self.ast_to_insert(ast)
@@ -91,22 +85,31 @@ class MongoDriver(Driver):
 
             return doc
 
-        elif query['type'] == Driver.QUERY_READ:
+        elif query['type'] in [Driver.QUERY_READ, Driver.QUERY_COUNT]:
             ast = query['filter']
             mfilter, s = {}, slice(None)
 
             if ast:
-                mfilter, s = self.ast_to_filter(ast)
+                result = self.ast_to_filter(ast)
 
-            cursor = self.collection.find(mfilter)
+            if isinstance(result, tuple):
+                mfilter, s = result
 
-            if s.start:
-                cursor = cursor.skip(s.start)
+                result = self.collection.find(mfilter)
 
-            if s.stop:
-                cursor = cursor.limit(s.stop)
+                if s.start:
+                    result = result.skip(s.start)
 
-            return cursor
+                if s.stop:
+                    result = result.limit(s.stop)
+
+            else:
+                result = self.collection.aggregate(result)
+
+            if query['type'] == Driver.QUERY_COUNT:
+                result = result.count()
+
+            return result
 
         elif query['type'] == Driver.QUERY_UPDATE:
             filter_ast = query['filter']
