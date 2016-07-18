@@ -1,86 +1,22 @@
 # -*- coding: utf-8 -*-
 
-from b3j0f.conf import Configurable, category, Parameter
 from link.dbrequest.driver import Driver
 
 from link.mongo.ast.insert import ASTInsertTransform
 from link.mongo.ast.filter import ASTFilterTransform
 from link.mongo.model import MongoCursor
-from link.mongo import CONF_BASE_PATH
-
-from pymongo import MongoClient
 
 
-@Configurable(
-    paths='{0}/driver.conf'.format(CONF_BASE_PATH),
-    conf=category(
-        'MONGO',
-        Parameter(name='auth_database', value=None),
-        Parameter(name='auth_mechanism', value='SCRAM-SHA-1'),
-        Parameter(name='auth_mechanism_props', value=None)
-    )
-)
-class MongoDriver(Driver):
-
-    __protocols__ = ['mongo']
+class MongoQueryDriver(Driver):
 
     cursor_class = MongoCursor
 
-    @property
-    def database(self):
-        if not hasattr(self, '_database'):
-            database = self.path[0]
-
-            db = self.conn[database]
-
-            if self.user is not None and self.pwd is not None:
-                kwargs = {
-                    'mechanism': self.auth_mechanism
-                }
-
-                if self.auth_database is not None:
-                    kwargs['source'] = self.auth_database
-
-                mechanismProps = self.auth_mechanism_props
-                if mechanismProps is not None:
-                    kwargs['authMechanismProperties'] = mechanismProps
-
-                db.authenticate(
-                    self.user,
-                    password=self.pwd,
-                    **kwargs
-                )
-
-            self._database = db
-
-        return self._database
-
-    @property
-    def collection(self):
-        if not hasattr(self, '_collection'):
-            collection = '_'.join(self.path[1:])
-
-            self._collection = self.database[collection]
-
-        return self._collection
-
-    def _connect(self):
-        return MongoClient(['{0}:{1}'.format(*host) for host in self.hosts])
-
-    def _disconnect(self, conn):
-        del self._database
-        del self._collection
-        del conn
-
-    def _isconnected(self, conn):
-        return conn is not None
-
-    def _process_query(self, conn, query):
+    def process_query(self, query):
         if query['type'] == Driver.QUERY_CREATE:
             ast = query['update']
             doc = self.ast_to_insert(ast)
 
-            result = self.collection.insert_one(doc)
+            result = self.obj.insert(doc)
             doc['_id'] = result.inserted_id
 
             return doc
@@ -100,17 +36,10 @@ class MongoDriver(Driver):
                     aggregation = True
 
             if not aggregation:
-                result = self.collection.find(mfilter)
-
-                if s.start:
-                    result = result.skip(s.start)
-
-                if s.stop:
-                    result = result.limit(s.stop)
+                result = self.obj.find(mfilter, skip=s.start, limit=s.stop)
 
             else:
-                print(result)
-                result = self.collection.aggregate(result)
+                result = self.obj.aggregate(result)
 
             if query['type'] == Driver.QUERY_COUNT:
                 result = result.count()
@@ -124,7 +53,7 @@ class MongoDriver(Driver):
             mfilter, _ = self.ast_to_filter(filter_ast)
             uspec = self.ast_to_update(update_ast)
 
-            result = self.collection.update_many(mfilter, uspec)
+            result = self.obj.update(mfilter, uspec, multi=True)
 
             return result.modified_count
 
@@ -132,7 +61,7 @@ class MongoDriver(Driver):
             ast = query['filter']
             mfilter, _ = self.ast_to_filter(ast)
 
-            result = self.collection.delete_many(mfilter)
+            result = self.obj.delete(mfilter, multi=True)
 
             return result.deleted_count
 
