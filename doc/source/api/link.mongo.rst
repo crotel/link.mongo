@@ -12,6 +12,22 @@ link.mongo.driver module
     :undoc-members:
     :show-inheritance:
 
+link.mongo.model module
+-----------------------
+
+.. automodule:: link.mongo.model
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+link.mongo.storage module
+-------------------------
+
+.. automodule:: link.mongo.storage
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
 Module contents
 ---------------
 
