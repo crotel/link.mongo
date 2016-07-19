@@ -22,7 +22,7 @@ class MongoQueryDriver(Driver):
     def process_query(self, query):
         if query['type'] == Driver.QUERY_CREATE:
             ast = AST('insert', query['update'])
-            doc = self.wupdate(self.mbuilder.parse(ast), {})
+            doc = self.wupdate.walk(self.mbuilder.parse(ast), {})
 
             return self.obj.insert(doc)
 
@@ -33,7 +33,7 @@ class MongoQueryDriver(Driver):
 
             if ast:
                 ast = AST('query', ast)
-                result = self.wfilter(self.mbuilder.parse(ast))
+                result = self.wfilter.walk(self.mbuilder.parse(ast))
 
                 if isinstance(result, tuple):
                     mfilter, s = result
@@ -56,8 +56,8 @@ class MongoQueryDriver(Driver):
             filter_ast = AST('query', query['filter'])
             update_ast = AST('update', query['update'])
 
-            mfilter, _ = self.wfilter(self.mbuilder.parse(filter_ast))
-            uspec = self.wupdate(self.mbuilder.parse(update_ast), {})
+            mfilter, _ = self.wfilter.walk(self.mbuilder.parse(filter_ast))
+            uspec = self.wupdate.walk(self.mbuilder.parse(update_ast), {})
 
             result = self.obj.update(mfilter, uspec, multi=True)
 
@@ -65,7 +65,7 @@ class MongoQueryDriver(Driver):
 
         elif query['type'] == Driver.QUERY_DELETE:
             ast = AST('query', query['filter'])
-            mfilter, _ = self.wfilter(self.mbuilder.parse(ast))
+            mfilter, _ = self.wfilter.walk(self.mbuilder.parse(ast))
 
             result = self.obj.delete(mfilter, multi=True)
 
