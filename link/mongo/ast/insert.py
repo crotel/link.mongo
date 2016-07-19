@@ -2,8 +2,8 @@
 
 from link.dbrequest.ast import NodeWalker
 from link.dbrequest.expression import E
-from b3j0f.task import gettask
 from six import string_types
+from b3j0f.task import run
 
 
 OPERATOR_MAP = {
@@ -46,13 +46,13 @@ class UpdateWalker(NodeWalker):
             return operator(left, right)
 
     def resolve_function(self, node, assignmentsByProp):
-        f = gettask('link.dbrequest.functions.{0}'.format(node.name[5:]))
-        args = [
-            self.resolve_expression(arg, assignmentsByProp)
-            for arg in node.val
-        ]
-
-        return f(*args)
+        return run({
+            'name': 'link.dbrequest.functions.{0}'.format(node.name[5:]),
+            'args': [
+                self.resolve_expression(arg, assignmentsByProp)
+                for arg in node.val
+            ]
+        })
 
     def walk_ASTAssign(self, node, children, assignmentsByProp):
         left, right = node.val
