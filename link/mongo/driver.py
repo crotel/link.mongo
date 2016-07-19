@@ -22,7 +22,7 @@ class MongoQueryDriver(Driver):
     def process_query(self, query):
         if query['type'] == Driver.QUERY_CREATE:
             ast = AST('insert', query['update'])
-            doc = self.winsert(self.mbuilder.parse(ast))
+            doc = self.wupdate(self.mbuilder.parse(ast), {})
 
             return self.obj.insert(doc)
 
@@ -57,7 +57,7 @@ class MongoQueryDriver(Driver):
             update_ast = AST('update', query['update'])
 
             mfilter, _ = self.wfilter(self.mbuilder.parse(filter_ast))
-            uspec = self.wupdate(self.mbuilder.parse(update_ast))
+            uspec = self.wupdate(self.mbuilder.parse(update_ast), {})
 
             result = self.obj.update(mfilter, uspec, multi=True)
 

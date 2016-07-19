@@ -1,87 +1,97 @@
 # -*- coding: utf-8 -*-
 
+from link.dbrequest.ast import NodeWalker, AST
 from link.dbrequest.expression import E
-from b3j0f.task import gettask
-
 from six import string_types
 
 
-class ASTInsertTransform(object):
+OPERATOR_MAP = {
+    E.ADD: lambda a, b: a + b,
+    E.SUB: lambda a, b: a - b,
+    E.MUL: lambda a, b: a * b,
+    E.DIV: lambda a, b: a / b,
+    E.MOD: lambda a, b: a % b,
+    E.POW: lambda a, b: a ** b,
+    E.BITLSHIFT: lambda a, b: a << b,
+    E.BITRSHIFT: lambda a, b: a >> b,
+    E.BITAND: lambda a, b: a & b,
+    E.BITOR: lambda a, b: a | b,
+    E.BITXOR: lambda a, b: a ^ b,
+}
 
-    OPERATOR_MAP = {
-        E.ADD: lambda a, b: a + b,
-        E.SUB: lambda a, b: a - b,
-        E.MUL: lambda a, b: a * b,
-        E.DIV: lambda a, b: a / b,
-        E.MOD: lambda a, b: a % b,
-        E.POW: lambda a, b: a ** b,
-        E.BITLSHIFT: lambda a, b: a << b,
-        E.BITRSHIFT: lambda a, b: a >> b,
-        E.BITAND: lambda a, b: a & b,
-        E.BITOR: lambda a, b: a | b,
-        E.BITXOR: lambda a, b: a ^ b,
-    }
 
-    def __init__(self, ast, *args, **kwargs):
-        super(ASTInsertTransform, self).__init__(*args, **kwargs)
+class UpdateWalker(NodeWalker):
+    def resolve_expression(self, node, assignmentsByProp):
+        if isinstance(node, string_types):
+            node = assignmentsByProp[node]
 
-        self.assignmentsByProp = {
-            prop['val']: assign['val']
-            for prop, assign in ast
-            if assign['val'] is not None
-        }
+        if node.name == 'val':
+            return node.val
 
-    def resolve_expression(self, prop):
-        if isinstance(prop, string_types):
-            prop = self.assignmentsByProp[prop]
+        elif node.name == 'ref':
+            return self.resolve_expression(node.val, assignmentsByProp)
 
-        if isinstance(prop, dict):
-            if prop['name'] == 'val':
-                return prop['val']
+        elif node.name.startswith('func_'):
+            return self.resolve_function(node, assignmentsByProp)
 
-            elif prop['name'] == 'ref':
-                return self.resolve_expression(prop['val'])
+        elif node.name.startswith('op_'):
+            opname = node.name[3:]
+            left, right = node.val
 
-            elif prop['name'] == 'func':
-                return self.resolve_function(prop['val'])
+            left = self.resolve_expression(left, assignmentsByProp)
+            right = self.resolve_expression(right, assignmentsByProp)
 
-        elif isinstance(prop, list):
-            left, op, right = prop
+            operator = OPERATOR_MAP[opname]
+            return operator(left, right)
 
-            if left['name'] == 'ref':
-                left = self.resolve_expression(left['val'])
-
-            elif left['name'] == 'func':
-                left = self.resolve_function(left['val'])
-
-            elif left['name'] == 'val':
-                left = left['val']
-
-            if right['name'] == 'ref':
-                right = self.resolve_expression(right['val'])
-
-            elif right['name'] == 'func':
-                right = self.resolve_function(right['val'])
-
-            elif right['name'] == 'val':
-                right = right['val']
-
-            return ASTInsertTransform.OPERATOR_MAP[op['val']](left, right)
-
-        else:
-            return None
-
-    def resolve_function(self, func):
-        f = gettask('link.dbrequest.functions.{0}'.format(func['func']))
+    def resolve_function(self, node, assignmentsByProp):
+        f = gettask('link.dbrequest.functions.{0}'.format(node.name[5:]))
         args = [
-            self.resolve_expression(argument)
-            for argument in func['args']
+            self.resolve_expression(arg, assignmentsByProp)
+            for arg in node.val
         ]
 
         return f(*args)
 
-    def __call__(self):
-        return {
-            prop: self.resolve_expression(assign)
-            for prop, assign in self.assignmentsByProp.items()
+    def walk_ASTAssign(self, node, children, assignmentsByProp):
+        left, right = node.val
+
+        assignmentsByProp[left.val] = right.val
+
+    def walk_ASTInsert(self, node, children, assignmentsByProp):
+        node.result = {
+            prop: self.resolve_expression(expr)
+            for prop, expr in assignmentsByProp.items()
         }
+
+        return node.result
+
+    def walk_ASTUpdate(self, node, children, assignmentsByProp):
+        doc = {
+            prop: self.resolve_expression(expr)
+            for prop, expr in assignmentsByProp.items()
+        }
+
+        update_set = {
+            prop: val
+            for prop, val in doc.items()
+            if val is not None
+        }
+
+        update_unset = {
+            prop: val
+            for prop, val in doc.items()
+            if val is None
+        }
+
+        update = {}
+
+        if update_set:
+            update['$set'] = update_set
+
+        if update_unset:
+            update['$unset'] = update_unset
+
+        node.result = update
+
+        return node.result

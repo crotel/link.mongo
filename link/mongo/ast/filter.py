@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from link.dbrequest.ast import NodeWalker
+from link.dbrequest.expression import E
 
 from copy import deepcopy
 import re
@@ -16,16 +17,16 @@ CONDITION_OPERATOR_MAP = {
 }
 
 EXPRESSION_OPERATOR_MAP = {
-    'add': '+',
-    'sub': '-',
-    'mul': '*',
-    'div': '/',
-    'mod': '%',
-    'lshift': '<<',
-    'rshift': '>>',
-    'and': '&',
-    'or': '|',
-    'xor': '^'
+    E.ADD: '+',
+    E.SUB: '-',
+    E.MUL: '*',
+    E.DIV: '/',
+    E.MOD: '%',
+    E.BITLSHIFT: '<<',
+    E.BITRSHIFT: '>>',
+    E.BITAND: '&',
+    E.BITOR: '|',
+    E.BITXOR: '^'
 }
 
 
