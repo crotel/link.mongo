@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 
-from link.dbrequest.ast import NodeWalker, AST
+from link.dbrequest.ast import NodeWalker
 from link.dbrequest.expression import E
+from b3j0f.task import gettask
 from six import string_types
 
 
