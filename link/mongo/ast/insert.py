@@ -33,7 +33,13 @@ class UpdateWalker(NodeWalker):
             return self.resolve_expression(node.val, assignmentsByProp)
 
         elif node.name.startswith('func_'):
-            return self.resolve_function(node, assignmentsByProp)
+            return run({
+                'name': 'link.dbrequest.functions.{0}'.format(node.name[5:]),
+                'args': [
+                    self.resolve_expression(arg, assignmentsByProp)
+                    for arg in node.val
+                ]
+            })
 
         elif node.name.startswith('op_'):
             opname = node.name[3:]
@@ -44,15 +50,6 @@ class UpdateWalker(NodeWalker):
 
             operator = OPERATOR_MAP[opname]
             return operator(left, right)
-
-    def resolve_function(self, node, assignmentsByProp):
-        return run({
-            'name': 'link.dbrequest.functions.{0}'.format(node.name[5:]),
-            'args': [
-                self.resolve_expression(arg, assignmentsByProp)
-                for arg in node.val
-            ]
-        })
 
     def walk_ASTAssign(self, node, children, assignmentsByProp):
         left, right = node.val
