@@ -1,246 +1,121 @@
 # -*- coding: utf-8 -*-
 
-from link.dbrequest.comparison import C
-from link.dbrequest.expression import E
+from link.dbrequest.ast import NodeWalker
 
+from copy import deepcopy
 import re
 
 
-class ASTFilterTransform(object):
+CONDITION_OPERATOR_MAP = {
+    '$lt': '<',
+    '$lte': '<=',
+    '$eq': '==',
+    '$ne': '!=',
+    '$gte': '>=',
+    '$gt': '>'
+}
 
-    CONDITION_MAP = {
-        C.EXISTS: '$exists',
-        C.LT: '$lt',
-        C.LTE: '$lte',
-        C.EQ: '$eq',
-        C.NE: '$ne',
-        C.GTE: '$gte',
-        C.GT: '$gt',
-        C.LIKE: '$regex'
-    }
+EXPRESSION_OPERATOR_MAP = {
+    'add': '+',
+    'sub': '-',
+    'mul': '*',
+    'div': '/',
+    'mod': '%',
+    'lshift': '<<',
+    'rshift': '>>',
+    'and': '&',
+    'or': '|',
+    'xor': '^'
+}
 
-    def __init__(self, ast, *args, **kwargs):
-        super(ASTFilterTransform, self).__init__(*args, **kwargs)
 
-        self.filters = [
-            clause
-            for clause in ast
-            if clause['name'] in ['filter', 'exclude']
-        ]
+class FilterWalker(NodeWalker):
+    def resolve_condition(self, node, operator):
+        left, right = node.val
 
-        self.slices = [
-            clause['val']
-            for clause in ast
-            if clause['name'] == 'slice'
-        ]
+        if right.name == 'val':
+            val = right.val
 
-        self.grouping = None
+            if operator == '$regex':
+                val = re.compile(right.val)
 
-        if ast[-1]['name'] == 'group':
-            self.grouping = ast[-1]['val']
-
-    def resolve_filter(self, clause, inverted=False):
-        if isinstance(clause, dict):
-            if clause['name'] == 'filter':
-                return self.resolve_filter(clause['val'], inverted=inverted)
-
-            elif clause['name'] in ['exclude', 'not']:
-                return self.resolve_filter(
-                    clause['val'],
-                    inverted=not inverted
-                )
+            return {
+                left.val: {operator: val}
+            }
 
         else:
-            left, op, right = clause
+            val = self.resolve_expression(right)
 
-            if op['name'] == 'join':
-                left = self.resolve_filter(left, inverted=inverted)
-                right = self.resolve_filter(right, inverted=inverted)
+            if operator == '$regex':
+                return {'$where': 'this.{0}.match({1})'.format(left.val, val)}
 
-                if left and right:
-                    if op['val'] == '&':
-                        if inverted:
-                            return {'$or': [left, right]}
+            else:
+                return {'$where': 'this.{0} {1} {2}'.format(
+                    left.val,
+                    CONDITION_OPERATOR_MAP[operator],
+                    val
+                )}
 
-                        else:
-                            return {'$and': [left, right]}
-
-                    elif op['val'] == '|':
-                        if inverted:
-                            return {'$and': [left, right]}
-
-                        else:
-                            return {'$or': [left, right]}
-
-                    elif op['val'] == '^':
-                        if inverted:
-                            return {
-                                '$or': [
-                                    {'$and': [left, right]},
-                                    {'$and': [
-                                        self.resolve_filter(
-                                            left,
-                                            inverted=not inverted
-                                        ),
-                                        self.resolve_filter(
-                                            right,
-                                            inverted=not inverted
-                                        )
-                                    ]}
-                                ]
-                            }
-
-                        else:
-                            return {
-                                '$or': [
-                                    {'$and': [
-                                        self.resolve_filter(
-                                            left,
-                                            inverted=not inverted
-                                        ),
-                                        right
-                                    ]},
-                                    {'$and': [
-                                        left,
-                                        self.resolve_filter(
-                                            right,
-                                            inverted=not inverted
-                                        )
-                                    ]}
-                                ]
-                            }
-
-                elif left and not right:
-                    return left
-
-                elif right and not left:
-                    return right
-
-            elif op['name'] == 'cond':
-                condop = ASTFilterTransform.CONDITION_MAP[op['val']]
-
-                if isinstance(right, dict) and right['name'] == 'val':
-                    val = right['val']
-
-                    if condop == '$regex':
-                        val = re.compile(right['val'])
-
-                        if inverted:
-                            return {left['val']: {'$not': val}}
-
-                        else:
-                            return {left['val']: {'$regex': val}}
-
-                    if inverted:
-                        return {left['val']: {'$not': {condop: val}}}
-
-                    else:
-                        return {left['val']: {condop: val}}
-
-                else:
-                    return {
-                        '$where': self.resolve_condition(
-                            left['val'],
-                            op['val'],
-                            right,
-                            inverted=inverted
-                        )
-                    }
-
-    def resolve_condition(self, propname, cond, expression, inverted=False):
-        val = self.resolve_expression(expression)
-
-        if cond == C.LIKE:
-            where = 'this.{0}.match({1})'.format(propname, val)
-
-        else:
-            where = 'this.{0} {1} {2}'.format(propname, cond, val)
-
-        if inverted:
-            where = '!({0})'.format(where)
-
-        return where
-
-    def resolve_expression(self, expression):
-        if isinstance(expression, dict):
-            if expression['name'] == 'val':
-                return '{0}'.format(expression['val'])
-
-            elif expression['name'] == 'ref':
-                return 'this.{0}'.format(expression['val'])
-
-            elif expression['name'] == 'func':
-                return '{0}({1})'.format(
-                    expression['val']['name'],
-                    ', '.join([
-                        self.resolve_expression(argument)
-                        for argument in expression['val']['args']
-                    ])
-                )
-
-        elif isinstance(expression, list):
-            left, op, right = expression[0]
+    def resolve_expression(self, node):
+        if node.name.startswith('op_'):
+            operator = EXPRESSION_OPERATOR_MAP[node.name[3:]]
+            left, right = node.val
 
             left = self.resolve_expression(left)
             right = self.resolve_expression(right)
 
-            if op['val'] == E.POW:
+            if operator == '**':
                 return 'Math.pow({0}, {1})'.format(left, right)
 
             else:
-                return '{0} {1} {2}'.format(left, op['val'], right)
+                return '({0} {1} {2})'.format(left, operator, right)
 
-    def resolve_aggregation(self, match, start, stop):
-        match_stage = {
-            '$match': match
-        }
+        elif node.name == 'ref':
+            return 'this.{0}'.format(node.val)
 
-        if start is not None:
-            match_stage['$skip'] = start
+        elif node.name.startswith('func_'):
+            return '{0}({1})'.format(
+                node.name[5:],
+                ', '.join([
+                    self.resolve_expression(arg)
+                    for arg in node.val
+                ])
+            )
 
-        if stop is not None:
-            match_stage['$limit'] = stop
+        elif node.name == 'val':
+            return '{0}'.format(node.val)
 
-        group_stage = {
-            '$group': {
-                '_id': '${0}'.format(self.grouping['key'])
-            }
-        }
+    def resolve_inverted(self, mfilter):
+        mfilter = deepcopy(mfilter)
 
-        for expression in self.grouping['expressions']:
-            if expression['name'] == 'func':
-                key = '{0}_{1}'.format(
-                    expression['val']['func'],
-                    expression['val']['args'][0]['val'].replace('.', '_')
-                )
-                op = '${0}'.format(expression['val']['func'])
-                prop = '${0}'.format(expression['val']['args'][0]['val'])
+        for key in mfilter.keys():
+            if key == '$and':
+                mfilter['$or'] = self.resolve_inverted(mfilter.pop('$and'))
 
-                group_stage['$group'][key] = {op: prop}
-
-        return [match_stage, group_stage]
-
-    def __call__(self):
-        mfilter = {}
-
-        if self.filters:
-            if len(self.filters) == 1:
-                mfilter = self.resolve_filter(self.filters[0])
+            elif key == '$or':
+                mfilter['$and'] = self.resolve_inverted(mfilter.pop('$or'))
 
             else:
-                mfilter = {
-                    '$and': [
-                        self.resolve_filter(clause)
-                        for clause in self.filters
-                    ]
-                }
+                subfilter = mfilter[key]
 
+                if '$where' in subfilter:
+                    subfilter['$where'] = '!({0})'.format(subfilter['$where'])
+
+                elif '$regex' in subfilter:
+                    subfilter['$not'] = subfilter.pop('$regex')
+
+                else:
+                    mfilter[key] = {'$not': subfilter}
+
+        return mfilter
+
+    def resolve_slices(self, nodes):
         start = 0
         stop = 0
 
-        for s in self.slices:
-            sstart = s['val'].start or 0
-            sstop = s['val'].stop or 0
+        for s in nodes:
+            sstart = s.val.start or 0
+            sstop = s.val.stop or 0
 
             start = max(sstart, start)
             stop = min(sstop, stop)
@@ -251,8 +126,137 @@ class ASTFilterTransform(object):
         if stop == 0:
             stop = None
 
-        if self.grouping is not None:
-            return self.resolve_aggregation(mfilter, start, stop)
+        return start, stop
+
+    def walk_ASTCondExists(self, node, children):
+        node.result = self.resolve_condition(node, '$exists')
+        return node.result
+
+    def walk_ASTCondLt(self, node, children):
+        node.result = self.resolve_condition(node, '$lt')
+        return node.result
+
+    def walk_ASTCondLte(self, node, children):
+        node.result = self.resolve_condition(node, '$lte')
+        return node.result
+
+    def walk_ASTCondEq(self, node, children):
+        node.result = self.resolve_condition(node, '$eq')
+        return node.result
+
+    def walk_ASTCondNe(self, node, children):
+        node.result = self.resolve_condition(node, '$ne')
+        return node.result
+
+    def walk_ASTCondGte(self, node, children):
+        node.result = self.resolve_condition(node, '$gte')
+        return node.result
+
+    def walk_ASTCondGt(self, node, children):
+        node.result = self.resolve_condition(node, '$gt')
+        return node.result
+
+    def walk_ASTCondLike(self, node, children):
+        node.result = self.resolve_condition(node, '$regex')
+        return node.result
+
+    def walk_ASTJoinAnd(self, node, children):
+        left, right = node.val
+
+        node.result = {
+            '$and': [left.result, right.result]
+        }
+
+        return node.result
+
+    def walk_ASTJoinOr(self, node, children):
+        left, right = node.val
+
+        node.result = {
+            '$or': [left.result, right.result]
+        }
+
+        return node.result
+
+    def walk_ASTJoinAnd(self, node, children):
+        left, right = node.val
+
+        node.result = {
+            '$or': [
+                {'$and': [left.result, right.result]},
+                {'$and': [
+                    self.resolve_inverted(left.result),
+                    self.resolve_inverted(right.result)
+                ]}
+            ]
+        }
+
+        return node.result
+
+    def walk_ASTFilter(self, node, children):
+        node.result = node.val.result
+
+        return node.result
+
+    def walk_ASTExclude(self, node, children):
+        node.result = self.resolve_inverted(node.val.result)
+
+        return node.result
+
+    def walk_ASTNot(self, node, children):
+        node.result = self.resolve_inverted(node.val.result)
+
+        return node.result
+
+    def walk_ASTGroup(self, node, children):
+        key = node.val[0]
+        expressions = node.val[1:]
+
+        group_stage = {
+            '_id': '${0}'.format(key.val)
+        }
+
+        for expression in expressions:
+            if expression.name.startswith('func_'):
+                key = '{0}_{1}'.format(
+                    expression.name[5:],
+                    expression.val[0].val.replace('.', '_')
+                )
+                op = '${0}'.format(expression.name[5:])
+                prop = '${0}'.format(expression.val[0].val)
+
+                group_stage[key] = {op: prop}
+
+        node.result = {'$group': group_stage}
+        return node.result
+
+    def walk_ASTQuery(self, node, children):
+        mfilter = {'$and': [
+            subnode.result
+            for subnode in node.val
+            if subnode.name == 'filter'
+        ]}
+
+        start, stop = self.resolve_slices([
+            subnode
+            for subnode in node.val
+            if subnode.name == 'slice'
+        ])
+
+        grouping = node.val[-1] if node.val[-1].name == 'group' else None
+
+        if grouping is not None:
+            match_stage = {
+                '$match': mfilter
+            }
+
+            if start is not None:
+                match_stage['$skip'] = start
+
+            if stop is not None:
+                match_stage['$limit'] = stop
+
+            return [match_stage, grouping.result]
 
         else:
             return mfilter, slice(start, stop)
