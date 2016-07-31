@@ -28,7 +28,7 @@ See documentation_ for more informations.
    :alt: Supported Python implementations
 
 .. image:: https://img.shields.io/pypi/wheel/link.mongo.svg?style=flat-square
-   :target: https://travis-ci.org/linkdd/link.mongo
+   :target: https://pypi.python.org/pypi/link.mongo
    :alt: Download format
 
 .. image:: https://travis-ci.org/linkdd/link.mongo.svg?branch=master&style=flat-square
@@ -57,3 +57,10 @@ Installation
 .. code-block:: text
 
    pip install link.mongo
+
+Donating
+--------
+
+.. image:: https://cdn.rawgit.com/gratipay/gratipay-badge/2.3.0/dist/gratipay.svg
+   :target: https://gratipay.com/~linkdd/
+   :alt: Support via Gratipay
