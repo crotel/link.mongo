@@ -13,9 +13,9 @@ AUTHOR = 'David Delassus'
 AUTHOR_EMAIL = 'david.jose.delassus@gmail.com'
 LICENSE = 'MIT'
 REQUIREMENTS = [
-    'b3j0f.conf>=0.3.18',
+    'b3j0f.conf>=0.3.19',
     'b3j0f.task>=0.0.4',
-    'link.dbrequest>=0.17',
+    'link.dbrequest>=0.19',
     'pymongo>=3.2.2',
     'six>=1.10.0'
 ]
